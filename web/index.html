@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多孔結構電鍍填滿動畫</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="page-header">
+    <h1>多孔結構電鍍填滿過程動畫</h1>
+    <p class="subtitle">在直流電場作用下，金屬離子由上方陰極向下遷移，並在顆粒表面與孔隙中逐步還原沉積，沉積層向下推進直至完全填滿。</p>
+  </header>
+
+  <div class="stage">
+
+    <div class="canvas-card">
+      <div class="scenario-switch">
+        <button id="scenarioSuccessBtn" class="ctrl-btn" aria-label="成功填滿情境">✅ 成功填滿</button>
+        <button id="scenarioFailureBtn" class="ctrl-btn ghost" aria-label="橋接失敗情境">⚠️ 橋接失敗（孔口封閉）</button>
+        <a class="ctrl-btn ghost" href="single-via.html">單一孔洞電鍍 →</a>
+      </div>
+      <canvas id="simCanvas"></canvas>
+
+      <div class="stage-banner">
+        <span id="stageLabel" class="stage-label">初始狀態</span>
+        <span id="stagePercent" class="stage-percent">0%</span>
+      </div>
+      <p class="drag-hint">🖱 拖曳旋轉視角・滾輪縮放</p>
+    </div>
+
+    <aside class="legend">
+      <h2>圖例</h2>
+      <ul>
+        <li><span class="swatch arrow-swatch">↓</span>離子 / 電流方向</li>
+        <li><span class="swatch" style="background:linear-gradient(#dff1fb,#bfe2f7)"></span>電解液</li>
+        <li><span class="swatch" style="background:linear-gradient(135deg,#e69b5c,#a85a29)"></span>已沉積金屬層</li>
+        <li><span class="swatch" style="background:radial-gradient(circle at 35% 30%, #e4e6e9, #9a9ea3)"></span>顆粒（孔隙障礙物）</li>
+        <li><span class="swatch ion-swatch"><span class="ion-dot"></span></span>金屬離子</li>
+        <li><span class="swatch" style="background:linear-gradient(135deg,#c97575,#8a3f3f)"></span>空洞（孔口提前封閉，永久困住）</li>
+      </ul>
+
+      <div class="info-block">
+        <h3>影響填滿效果的關鍵因素</h3>
+        <ul class="factors">
+          <li>電流密度分布：過高易造成上層快速沉積，導致孔口封閉。</li>
+          <li>電解液流動與攪拌：促進離子補充、排除氣泡。</li>
+          <li>顆粒尺寸與孔隙結構：孔隙連通性決定沉積路徑與填滿難易度。</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn" class="ctrl-btn" aria-label="播放/暫停">暫停</button>
+    <button id="restartBtn" class="ctrl-btn ghost" aria-label="重新開始">重新開始</button>
+
+    <input id="frameSlider" type="range" min="0" max="1" value="0" step="1">
+
+    <label class="speed-label">
+      速度
+      <select id="speedSelect">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+      </select>
+    </label>
+
+    <button id="downloadBtn" class="ctrl-btn ghost" aria-label="下載動畫影片">⬇ 下載動畫影片</button>
+  </div>
+
+  <p class="footnote">下載影片格式依瀏覽器支援而定：可支援時輸出 MP4，否則自動改為 WebM（建議使用 Chrome / Edge）。下載時會自動從頭播放一次目前情境的完整動畫並錄製，請稍候至下載開始。</p>
+
+  <p class="footnote">說明：本頁為簡化物理模擬示意（求解 Laplace 場並依局部離子通量加權生長沉積前沿），實際電鍍過程為動態且複雜的電化學反應，沉積形貌與速率會因材料、電解液配方、操作條件與顆粒結構特性而有所差異。</p>
+
+</div>
+
+<script src="data.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
