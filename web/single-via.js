@@ -195,6 +195,7 @@
   const linerMats = linerColors.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.45, metalness: 0.3 }));
 
   let insetPrev = 0;
+  const seedStripMeshes = [];
   for (let k = 0; k < 3; k++) {
     const thisT = linerThickness * linerSplit[k];
     const mat = linerMats[k];
@@ -207,7 +208,15 @@
     bottomStrip.position.set(0, -DEPTH + insetPrev + thisT / 2, 0);
     scene.add(leftStrip, rightStrip, bottomStrip);
 
+    if (k === 2) seedStripMeshes.push(leftStrip, rightStrip, bottomStrip);
+
     insetPrev += thisT;
+  }
+
+  // 種子層（Cu Seed）：凹槽一開始只有阻障層，種子層在銅開始電鍍生長的瞬間才完整出現
+  function updateSeedLayer(frame) {
+    const visible = frame > 0;
+    for (const m of seedStripMeshes) m.visible = visible;
   }
 
   // 肩部頂面介電層(SiO2)蓋層
@@ -266,7 +275,11 @@
     }
 
     // 底部前緣（跨滿整個腔體寬度，由底部往上推進）
+    // 注意：即使某方向 scale 收斂到 EPS，該 mesh 在另外兩個方向仍是全尺寸的平面，
+    // 從特定視角（幾乎平行於收斂軸看過去）仍會露出整片實心色塊，因此還沒開始生長時
+    // 必須額外用 visible=false 徹底隱藏，不能只靠極薄的 scale。
     const bottomH = Math.max(frontY, EPS);
+    bottomFillMesh.visible = frontY > 1e-6;
     bottomFillMesh.scale.set(cavityW, bottomH, L);
     bottomFillMesh.position.set(0, -cavityD + frontY / 2, 0);
 
@@ -276,8 +289,11 @@
     const bodySideH = Math.max(bodyYHigh - bodyYLow, EPS);
     const bodySideW = Math.max(bodySideT, EPS);
     const bodySideCenterY = (bodyYLow + bodyYHigh) / 2;
+    const bodySideVisible = bodySideT > 1e-6;
+    leftBodySideFillMesh.visible = bodySideVisible;
     leftBodySideFillMesh.scale.set(bodySideW, bodySideH, L);
     leftBodySideFillMesh.position.set(-Hc + bodySideT / 2, bodySideCenterY, 0);
+    rightBodySideFillMesh.visible = bodySideVisible;
     rightBodySideFillMesh.scale.set(bodySideW, bodySideH, L);
     rightBodySideFillMesh.position.set(Hc - bodySideT / 2, bodySideCenterY, 0);
 
@@ -287,8 +303,11 @@
     const mouthSideH = Math.max(mouthYHigh - mouthYLow, EPS);
     const mouthSideW = Math.max(mouthSideT, EPS);
     const mouthSideCenterY = (mouthYLow + mouthYHigh) / 2;
+    const mouthSideVisible = mouthSideT > 1e-6;
+    leftMouthSideFillMesh.visible = mouthSideVisible;
     leftMouthSideFillMesh.scale.set(mouthSideW, mouthSideH, L);
     leftMouthSideFillMesh.position.set(-Hc + mouthSideT / 2, mouthSideCenterY, 0);
+    rightMouthSideFillMesh.visible = mouthSideVisible;
     rightMouthSideFillMesh.scale.set(mouthSideW, mouthSideH, L);
     rightMouthSideFillMesh.position.set(Hc - mouthSideT / 2, mouthSideCenterY, 0);
 
@@ -296,6 +315,7 @@
     if (!isFailure() && numFrames > fillPhaseFrames) {
       const tOver = Math.max(0, Math.min(1, (frame - fillPhaseFrames) / (numFrames - fillPhaseFrames)));
       const overH = MAX_OVERBURDEN * smoothstep(tOver);
+      overburdenMesh.visible = overH > 1e-6;
       overburdenMesh.scale.set(W + 2 * SW, Math.max(overH, EPS), L);
       overburdenMesh.position.set(0, overH / 2, 0);
     } else {
@@ -412,6 +432,7 @@
     lastTime: null,
     acc: 0,
     holdUntil: 0,
+    startHoldUntil: 0,
     recording: false,
     recordStopAt: 0,
   };
@@ -421,6 +442,7 @@
     slider.value = String(state.frame);
     updateStageText(state.frame);
     updateViaFill(state.frame);
+    updateSeedLayer(state.frame);
     if (state.recording) {
       downloadBtn.textContent = `錄製中… ${Math.round((state.frame / (numFrames - 1)) * 100)}%`;
     }
@@ -564,7 +586,14 @@
     const tSec = timestamp / 1000;
 
     if (state.playing) {
-      if (state.frame >= numFrames - 1) {
+      if (state.frame === 0 && !state.recording) {
+        state.startHoldUntil = state.startHoldUntil || timestamp + 900;
+      }
+
+      if (state.frame === 0 && !state.recording && timestamp < state.startHoldUntil) {
+        // 停留在空腔體的初始畫面，尚未開始沉積
+      } else if (state.frame >= numFrames - 1) {
+        state.startHoldUntil = 0;
         if (state.recording) {
           state.recordStopAt = state.recordStopAt || timestamp + 300;
           if (timestamp >= state.recordStopAt) {
@@ -580,6 +609,7 @@
           }
         }
       } else {
+        state.startHoldUntil = 0;
         state.acc += dt * state.baseFps * state.speed;
         while (state.acc >= 1) {
           state.acc -= 1;
