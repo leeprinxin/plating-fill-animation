@@ -67,10 +67,58 @@ html, body {
   font-size: 13px;
 }
 
+.canvas-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
 #simCanvas {
   display: block;
   border-radius: 10px;
-  cursor: grab;
+}
+
+.via-label-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.via-label-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: #1b2a4a;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.via-label-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 1.5px;
+  background: rgba(27, 42, 74, 0.75);
+  transform-origin: 0 50%;
+}
+
+.via-label-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b2a4a;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(20, 30, 50, 0.22);
+  border: 1px solid rgba(27, 42, 74, 0.15);
 }
 
 .drag-hint {
@@ -86,6 +134,26 @@ html, body {
   justify-content: space-between;
   margin-top: 12px;
   padding: 0 4px;
+}
+
+.stage-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stage-badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #1b2a4a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-label {
@@ -135,9 +203,9 @@ html, body {
 .swatch {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: 7px;
   flex: 0 0 auto;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(20, 30, 50, 0.15);
 }
 
 .arrow-swatch {

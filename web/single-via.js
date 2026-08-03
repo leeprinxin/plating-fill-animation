@@ -1,11 +1,10 @@
 (() => {
   const D = window.VIA_DATA;
   const {
-    trenchWidth: W, trenchDepth: DEPTH, linerThickness, linerSplit,
-    shoulderWidth: SW, topCapThickness, substrateBelow,
+    trenchWidth: W, trenchDepth: DEPTH, linerThickness,
+    shoulderWidth: SW, substrateBelow,
   } = D;
 
-  const L = 5.0; // 沿 z 方向擠出深度，做出可旋轉觀察的 3D 立體溝槽
   const EPS = 0.0001;
 
   const cavityW = W - 2 * linerThickness;
@@ -31,230 +30,247 @@
   }
   applyScenarioData(activeKey);
 
-  // ---------------------------------------------------------------- Three.js 基本設置（沿用 app.js 慣例）
+  // ---------------------------------------------------------------- Canvas2D 基本設置
   const canvas = document.getElementById("simCanvas");
   const DISPLAY_W = 640, DISPLAY_H = 560;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(DISPLAY_W * dpr);
+  canvas.height = Math.round(DISPLAY_H * dpr);
   canvas.style.width = DISPLAY_W + "px";
   canvas.style.height = DISPLAY_H + "px";
-  canvas.style.cursor = "grab";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-  renderer.setSize(DISPLAY_W, DISPLAY_H, false);
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.setClearColor(0xeef4fa, 1);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(42, DISPLAY_W / DISPLAY_H, 0.1, 100);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 0.95);
-  keyLight.position.set(4, 6, 5);
-  scene.add(keyLight);
-  const fillLight = new THREE.DirectionalLight(0xbcd6ee, 0.4);
-  fillLight.position.set(-5, -2, -4);
-  scene.add(fillLight);
-
-  const dummy = new THREE.Object3D();
-
-  // ---------------------------------------------------------------- 顏色
+  // ---------------------------------------------------------------- 顏色（沿用圖例色彩）
   const siColor = 0x6b7178;
-  const sioColor = 0xd7dbe0;
   const barrierColor = 0x5c7290;
-  const seedColor = 0xd9b35c;
   const copperColor = 0xc8763c;
+  const overburdenColor = 0xdfa060;
   const ionColor = 0xe0925a;
   const fieldLineColor = 0x4f8fd8;
   const voidColor = 0xb85a5a;
 
-  // ---------------------------------------------------------------- 場景整體尺寸
+  function toRgb(hex) {
+    return `rgb(${(hex >> 16) & 255},${(hex >> 8) & 255},${hex & 255})`;
+  }
+  function darken(hex, amt) {
+    const r = Math.round(((hex >> 16) & 255) * (1 - amt));
+    const g = Math.round(((hex >> 8) & 255) * (1 - amt));
+    const b = Math.round((hex & 255) * (1 - amt));
+    return `rgb(${r},${g},${b})`;
+  }
+  function lighten(hex, amt) {
+    const r = Math.round(((hex >> 16) & 255) * (1 - amt) + 255 * amt);
+    const g = Math.round(((hex >> 8) & 255) * (1 - amt) + 255 * amt);
+    const b = Math.round((hex & 255) * (1 - amt) + 255 * amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // ---------------------------------------------------------------- 場景整體尺寸（模型座標，單位與 via-data.js 一致）
   const structBottomY = -(DEPTH + substrateBelow);
-  const capTopY = topCapThickness;
   const ELECTROLYTE_H = (DEPTH + substrateBelow) * 0.33;
-  const electrolyteTopY = capTopY + ELECTROLYTE_H;
-  const totalH = electrolyteTopY - structBottomY;
+  const electrolyteTopY = ELECTROLYTE_H;
 
   const innerW = (W + 2 * SW) + 1.0;
-  const innerD = L + 1.0;
-  const wallT = 0.12;
   const baseT = 0.3;
-  const tankCenterY = (structBottomY + electrolyteTopY) / 2;
+  const glassTop = electrolyteTopY + 0.3;
+  const glassBottom = structBottomY - baseT;
+  const glassW = innerW + 0.4;
+  const totalH = glassTop - glassBottom;
 
-  // ---------------------------------------------------------------- 容器（玻璃缸）
-  const tankGroup = new THREE.Group();
-  scene.add(tankGroup);
+  // ---------------------------------------------------------------- 模型座標 → 畫面像素座標
+  const PAD = 24;
+  const scale = Math.min((DISPLAY_W - PAD * 2) / glassW, (DISPLAY_H - PAD * 2) / totalH);
+  const vPad = (DISPLAY_H - totalH * scale) / 2;
+  const originX = DISPLAY_W / 2;
 
-  const glassMat = new THREE.MeshStandardMaterial({
-    color: 0xbfe0f5, transparent: true, opacity: 0.16, roughness: 0.15, metalness: 0.05, side: THREE.DoubleSide,
-  });
-  const wallGeoLR = new THREE.BoxGeometry(wallT, totalH + wallT * 2, innerD + wallT * 2);
-  const wallGeoFB = new THREE.BoxGeometry(innerW + wallT * 2, totalH + wallT * 2, wallT);
+  function worldToPx(x, y) {
+    return { x: originX + x * scale, y: vPad + (glassTop - y) * scale };
+  }
 
-  const leftWall = new THREE.Mesh(wallGeoLR, glassMat);
-  leftWall.position.set(-innerW / 2, tankCenterY, 0);
-  const rightWall = leftWall.clone();
-  rightWall.position.x = innerW / 2;
-  const backWall = new THREE.Mesh(wallGeoFB, glassMat);
-  backWall.position.set(0, tankCenterY, -innerD / 2);
-  const frontWall = backWall.clone();
-  frontWall.position.z = innerD / 2;
-  tankGroup.add(leftWall, rightWall, backWall, frontWall);
+  function fillWorldRect(cx, cy, w, h, fillColor, strokeColor) {
+    const p = worldToPx(cx - w / 2, cy + h / 2);
+    const pw = w * scale, ph = h * scale;
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(p.x, p.y, pw, ph);
+    if (strokeColor) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = strokeColor;
+      ctx.strokeRect(p.x + 0.5, p.y + 0.5, pw, ph);
+    }
+  }
 
-  const baseMat = new THREE.MeshStandardMaterial({ color: 0x8b939b, roughness: 0.5, metalness: 0.35 });
-  const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(innerW + wallT * 2, baseT, innerD + wallT * 2), baseMat);
-  baseMesh.position.set(0, structBottomY - baseT / 2, 0);
-  tankGroup.add(baseMesh);
+  // 材質色塊繪製：圓角矩形 + 由亮到暗的縱向漸層，corners 只在「確定完全暴露在外」的角落傳入非 0
+  // 半徑（世界座標單位），彼此貼合的內部邊界一律維持直角，避免出現縫隙。
+  const CORNER_R = 0.34;
+  function fillWorldRoundRect(cx, cy, w, h, colorHex, corners, noStroke, sharedFill) {
+    corners = corners || {};
+    const p = worldToPx(cx - w / 2, cy + h / 2);
+    const pw = w * scale, ph = h * scale;
+    const maxR = Math.min(pw, ph) / 2;
+    const rTL = Math.min((corners.tl || 0) * scale, maxR);
+    const rTR = Math.min((corners.tr || 0) * scale, maxR);
+    const rBR = Math.min((corners.br || 0) * scale, maxR);
+    const rBL = Math.min((corners.bl || 0) * scale, maxR);
+    const x = p.x, y = p.y;
 
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcfd7de, roughness: 0.35, metalness: 0.5 });
-  const rimMesh = new THREE.Mesh(new THREE.BoxGeometry(innerW + wallT * 3, 0.12, innerD + wallT * 3), rimMat);
-  rimMesh.position.set(0, electrolyteTopY + 0.06, 0);
-  tankGroup.add(rimMesh);
+    ctx.beginPath();
+    ctx.moveTo(x + rTL, y);
+    ctx.lineTo(x + pw - rTR, y);
+    if (rTR) ctx.arcTo(x + pw, y, x + pw, y + rTR, rTR);
+    ctx.lineTo(x + pw, y + ph - rBR);
+    if (rBR) ctx.arcTo(x + pw, y + ph, x + pw - rBR, y + ph, rBR);
+    ctx.lineTo(x + rBL, y + ph);
+    if (rBL) ctx.arcTo(x, y + ph, x, y + ph - rBL, rBL);
+    ctx.lineTo(x, y + rTL);
+    if (rTL) ctx.arcTo(x, y, x + rTL, y, rTL);
+    ctx.closePath();
+
+    let g = sharedFill;
+    if (!g) {
+      g = ctx.createLinearGradient(x, y, x, y + ph);
+      g.addColorStop(0, lighten(colorHex, 0.2));
+      g.addColorStop(0.5, toRgb(colorHex));
+      g.addColorStop(1, darken(colorHex, 0.2));
+    }
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    if (!noStroke) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = darken(colorHex, 0.25);
+      ctx.stroke();
+    }
+  }
 
   // ---------------------------------------------------------------- 電解液 + 離子
-  const electrolyteMat = new THREE.MeshStandardMaterial({
-    color: 0x8fd0f2, transparent: true, opacity: 0.32, roughness: 0.1, metalness: 0,
-  });
-  const electrolyteMesh = new THREE.Mesh(new THREE.BoxGeometry(innerW, ELECTROLYTE_H, innerD), electrolyteMat);
-  electrolyteMesh.position.set(0, capTopY + ELECTROLYTE_H / 2, 0);
-  scene.add(electrolyteMesh);
-
   const ION_COUNT = 16;
   const ionR = Hc * 0.14;
-  const ionMesh = new THREE.InstancedMesh(
-    new THREE.SphereGeometry(ionR, 8, 8),
-    new THREE.MeshStandardMaterial({ color: ionColor, emissive: 0x3a1c08, roughness: 0.4, metalness: 0.1 }),
-    ION_COUNT
-  );
-  ionMesh.frustumCulled = false;
   const ions = [];
   for (let i = 0; i < ION_COUNT; i++) {
     ions.push({
       x: (Math.random() - 0.5) * innerW * 0.78,
-      z: (Math.random() - 0.5) * innerD * 0.78,
+      y: electrolyteTopY,
       phase: Math.random(),
       speed: 0.5 + Math.random() * 0.3,
     });
   }
-  scene.add(ionMesh);
+
+  // 目前銅填充前緣的 y 座標（離子若要繼續往下流，最深只能流到這裡，象徵撞上已沉積的銅面）
+  function currentFillFrontY() {
+    return -cavityD + lastFrontY;
+  }
+
+  // 目前孔口仍然開放（尚未被側壁銅層填滿）的半寬，隨側壁增厚而收窄，收窄到 0 代表已封閉
+  function currentOpenHalfW() {
+    return Math.max(Hc - Math.max(lastBodySideT, lastMouthSideT), 0);
+  }
 
   function updateIons(tSec) {
-    for (let i = 0; i < ION_COUNT; i++) {
-      const ion = ions[i];
+    const openHalfW = currentOpenHalfW();
+    const floorY = currentFillFrontY();
+    for (const ion of ions) {
       const localT = (tSec * ion.speed + ion.phase) % 1;
-      const y = capTopY + ELECTROLYTE_H * (0.94 - localT * 0.88);
-      dummy.position.set(ion.x, y, ion.z);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      ionMesh.setMatrixAt(i, dummy.matrix);
+      const inChannel = openHalfW > ionR * 1.4 && Math.abs(ion.x) < openHalfW - ionR * 0.6;
+      const topY = electrolyteTopY * 0.94;
+      const bottomY = inChannel ? Math.max(floorY + Hc * 0.12, floorY) : ELECTROLYTE_H * 0.06;
+      ion.y = topY - localT * (topY - bottomY);
     }
-    ionMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  function drawIons() {
+    ctx.fillStyle = toRgb(ionColor);
+    for (const ion of ions) {
+      const p = worldToPx(ion.x, ion.y);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, ionR * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // ---------------------------------------------------------------- 電場線（虛線）與電流方向箭頭
-  const fieldGroup = new THREE.Group();
-  scene.add(fieldGroup);
-
-  const arrowHeadGeo = new THREE.ConeGeometry(Hc * 0.18, Hc * 0.46, 10);
-  const arrowHeadMat = new THREE.MeshStandardMaterial({ color: fieldLineColor, roughness: 0.4, metalness: 0.2 });
-  const fieldLineMat = new THREE.LineDashedMaterial({
-    color: fieldLineColor, dashSize: Hc * 0.3, gapSize: Hc * 0.24, transparent: true, opacity: 0.6,
-  });
-
   const FIELD_XS = [-Hc * 0.85, 0, Hc * 0.85];
-  for (const fx of FIELD_XS) {
-    const yTop = electrolyteTopY * 0.96;
-    const yBot = capTopY + 0.15;
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(fx, yTop, 0),
-      new THREE.Vector3(fx, yBot, 0),
-    ]);
-    const line = new THREE.Line(geo, fieldLineMat);
-    line.computeLineDistances();
-    fieldGroup.add(line);
+  const fieldYTop = electrolyteTopY * 0.96;
+  const fieldYBot = 0.45;
 
-    const arrow = new THREE.Mesh(arrowHeadGeo, arrowHeadMat);
-    arrow.position.set(fx, yBot, 0);
-    arrow.rotation.x = Math.PI; // 錐尖朝下，代表離子/電流由電解液上方流向溝槽
-    fieldGroup.add(arrow);
+  function drawFieldLines() {
+    ctx.save();
+    ctx.strokeStyle = toRgb(fieldLineColor);
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    for (const fx of FIELD_XS) {
+      const top = worldToPx(fx, fieldYTop);
+      const bot = worldToPx(fx, fieldYBot);
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(bot.x, bot.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = toRgb(fieldLineColor);
+    ctx.globalAlpha = 0.9;
+    const aw = Hc * 0.18 * scale, ah = Hc * 0.32 * scale;
+    for (const fx of FIELD_XS) {
+      const tip = worldToPx(fx, fieldYBot);
+      ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y + ah * 0.5);
+      ctx.lineTo(tip.x - aw, tip.y - ah * 0.5);
+      ctx.lineTo(tip.x + aw, tip.y - ah * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- 玻璃缸 + 電解液
+  function drawTank() {
+    fillWorldRect(0, (glassTop + glassBottom) / 2, glassW, glassTop - glassBottom, "rgba(191,224,245,0.14)", "rgba(140,182,214,0.55)");
+  }
+  function drawElectrolyte() {
+    fillWorldRect(0, electrolyteTopY / 2, innerW, ELECTROLYTE_H, "rgba(143,208,242,0.34)", null);
   }
 
   // ---------------------------------------------------------------- 基板（矽，U 形溝槽）
-  const siMat = new THREE.MeshStandardMaterial({ color: siColor, roughness: 0.75, metalness: 0.1 });
   const totalBelowH = DEPTH + substrateBelow;
+  const shoulderRects = [
+    { cx: -(W / 2 + SW / 2), cy: -totalBelowH / 2, w: SW, h: totalBelowH },
+    { cx: W / 2 + SW / 2, cy: -totalBelowH / 2, w: SW, h: totalBelowH },
+  ];
+  const rightShoulderPos = { x: W / 2 + SW / 2, y: -totalBelowH / 2 };
+  const bottomFloorRect = { cx: 0, cy: -(DEPTH + substrateBelow / 2), w: W, h: substrateBelow };
 
-  const leftShoulder = new THREE.Mesh(new THREE.BoxGeometry(SW, totalBelowH, L), siMat);
-  leftShoulder.position.set(-(W / 2 + SW / 2), -totalBelowH / 2, 0);
-  const rightShoulder = new THREE.Mesh(new THREE.BoxGeometry(SW, totalBelowH, L), siMat);
-  rightShoulder.position.set(W / 2 + SW / 2, -totalBelowH / 2, 0);
-  const bottomFloor = new THREE.Mesh(new THREE.BoxGeometry(W, substrateBelow, L), siMat);
-  bottomFloor.position.set(0, -(DEPTH + substrateBelow / 2), 0);
-  scene.add(leftShoulder, rightShoulder, bottomFloor);
+  // ---------------------------------------------------------------- Liner：阻障層(Ta/TaN)，直接鋪滿整個 liner 厚度
+  const linerRects = [
+    { cx: -W / 2 + linerThickness / 2, cy: -DEPTH / 2, w: linerThickness, h: DEPTH },
+    { cx: W / 2 - linerThickness / 2, cy: -DEPTH / 2, w: linerThickness, h: DEPTH },
+    { cx: 0, cy: -DEPTH + linerThickness / 2, w: W, h: linerThickness },
+  ];
+  const rightLinerX = W / 2 - linerThickness / 2; // 右側牆 x 座標，作為指引線標籤錨點
 
-  // ---------------------------------------------------------------- Liner 三層：介電層(SiO2)／阻障層(Ta/TaN)／種子層(Cu Seed)
-  const linerColors = [sioColor, barrierColor, seedColor];
-  const linerMats = linerColors.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.45, metalness: 0.3 }));
-
-  let insetPrev = 0;
-  const seedStripMeshes = [];
-  for (let k = 0; k < 3; k++) {
-    const thisT = linerThickness * linerSplit[k];
-    const mat = linerMats[k];
-
-    const leftStrip = new THREE.Mesh(new THREE.BoxGeometry(thisT, DEPTH, L), mat);
-    leftStrip.position.set(-W / 2 + insetPrev + thisT / 2, -DEPTH / 2, 0);
-    const rightStrip = new THREE.Mesh(new THREE.BoxGeometry(thisT, DEPTH, L), mat);
-    rightStrip.position.set(W / 2 - insetPrev - thisT / 2, -DEPTH / 2, 0);
-    const bottomStrip = new THREE.Mesh(new THREE.BoxGeometry(W, thisT, L), mat);
-    bottomStrip.position.set(0, -DEPTH + insetPrev + thisT / 2, 0);
-    scene.add(leftStrip, rightStrip, bottomStrip);
-
-    if (k === 2) seedStripMeshes.push(leftStrip, rightStrip, bottomStrip);
-
-    insetPrev += thisT;
-  }
-
-  // 種子層（Cu Seed）：凹槽一開始只有阻障層，種子層在銅開始電鍍生長的瞬間才完整出現
-  function updateSeedLayer(frame) {
-    const visible = frame > 0;
-    for (const m of seedStripMeshes) m.visible = visible;
-  }
-
-  // 肩部頂面介電層(SiO2)蓋層
-  const sioCapMat = linerMats[0];
-  const leftCap = new THREE.Mesh(new THREE.BoxGeometry(SW, topCapThickness, L), sioCapMat);
-  leftCap.position.set(-(W / 2 + SW / 2), topCapThickness / 2, 0);
-  const rightCap = new THREE.Mesh(new THREE.BoxGeometry(SW, topCapThickness, L), sioCapMat);
-  rightCap.position.set(W / 2 + SW / 2, topCapThickness / 2, 0);
-  scene.add(leftCap, rightCap);
-
-  // ---------------------------------------------------------------- 銅填充（解析式生長模型，動態調整數個 Mesh）
+  // ---------------------------------------------------------------- 銅填充（解析式生長模型）
   //
   // 溝槽垂直方向分成「孔口區」（開口附近，y ∈ [-mouthH, 0]）與「本體區」（y ∈ [-cavityD, -mouthH]）。
   // 成功情境：孔口區與本體區側壁以相同速率增厚，視覺上無縫銜接，等同於單一連續側壁生長。
   // 失敗情境（橋接）：孔口區側壁增厚速率遠快於本體區，於 sealFrame 搶先在開口處會合封閉，
   // 之後（本體區與底部因電解液已無法進入而停止生長）永久困住一段未填滿的空洞。
-  const cuMat = new THREE.MeshStandardMaterial({ color: copperColor, roughness: 0.35, metalness: 0.55 });
-  const voidMat = new THREE.MeshStandardMaterial({ color: voidColor, roughness: 0.55, metalness: 0.1 });
-  const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
-
-  const bottomFillMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const leftBodySideFillMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const rightBodySideFillMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const leftMouthSideFillMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const rightMouthSideFillMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const overburdenMesh = new THREE.Mesh(unitBoxGeo, cuMat);
-  const voidMesh = new THREE.Mesh(unitBoxGeo, voidMat);
-  scene.add(
-    bottomFillMesh, leftBodySideFillMesh, rightBodySideFillMesh,
-    leftMouthSideFillMesh, rightMouthSideFillMesh, overburdenMesh, voidMesh
-  );
-
   const MAX_OVERBURDEN = 1.1;
+  const TOP_FILM_MAX = 0.26; // 肩部頂面薄銅層在「填孔階段」內能長到的最大厚度，之後由過鍍層接手繼續增厚
   const mouthH = cavityD * MOUTH_FRAC;
   const mouthY0 = -mouthH; // 孔口區下邊界（= 本體區上邊界）
 
+  let lastFrontY = 0, lastBodySideT = 0, lastMouthSideT = 0; // 供「銅 Cu」指引線標籤錨點與離子流動判斷使用
+
+  // 銅填充的成長參數（單一多邊形外框，見 buildCopperOutline，取代舊版逐一矩形拼接的 fillState）
+  const copperParams = {
+    frontY: 0, bodySideT: 0, mouthSideT: 0, filmH: 0, overH: null,
+    revealVoid: false, voidW: 0, voidH: 0, voidCenterY: 0,
+  };
+
   function updateViaFill(frame) {
-    let frontY, mouthSideT, bodySideT, revealVoid;
+    let frontY, mouthSideT, bodySideT, revealVoid, topFrac;
 
     if (!isFailure()) {
       const t = Math.min(1, frame / fillPhaseFrames);
@@ -264,6 +280,9 @@
       mouthSideT = Hc * fS;
       bodySideT = Hc * fS; // 孔口區與本體區同速率，視覺上無縫銜接
       revealVoid = false;
+      // 頂面（肩部）直接暴露在電解液中，鍍覆幾乎與底部同時開始，走比孔口側壁快得多的曲線，
+      // 不等側壁追上才出現，一開始就能看到一層銅沿著整個頂面與孔口邊緣同步變厚、連成一體。
+      topFrac = Math.pow(smoothstep(t), 0.4);
     } else {
       const effFrame = Math.min(frame, sealFrame);
       const tSeal = sealFrame > 0 ? effFrame / sealFrame : 1;
@@ -272,67 +291,36 @@
       mouthSideT = Hc * ease;                           // 孔口區：快速增厚，於 sealFrame 剛好封閉
       bodySideT = Hc * bodySideMaxFrac * ease;          // 本體區：慢很多，留下大片未填空間
       revealVoid = frame >= sealFrame;
+      topFrac = ease;
     }
 
-    // 底部前緣（跨滿整個腔體寬度，由底部往上推進）
-    // 注意：即使某方向 scale 收斂到 EPS，該 mesh 在另外兩個方向仍是全尺寸的平面，
-    // 從特定視角（幾乎平行於收斂軸看過去）仍會露出整片實心色塊，因此還沒開始生長時
-    // 必須額外用 visible=false 徹底隱藏，不能只靠極薄的 scale。
-    const bottomH = Math.max(frontY, EPS);
-    bottomFillMesh.visible = frontY > 1e-6;
-    bottomFillMesh.scale.set(cavityW, bottomH, L);
-    bottomFillMesh.position.set(0, -cavityD + frontY / 2, 0);
+    lastFrontY = frontY;
+    lastBodySideT = bodySideT;
+    lastMouthSideT = mouthSideT;
 
-    // 本體區側壁（介於底部前緣頂面與孔口區下邊界之間，若已被底部前緣吃掉則收斂為極小值）
-    const bodyYLow = -cavityD + frontY;
-    const bodyYHigh = mouthY0;
-    const bodySideH = Math.max(bodyYHigh - bodyYLow, EPS);
-    const bodySideW = Math.max(bodySideT, EPS);
-    const bodySideCenterY = (bodyYLow + bodyYHigh) / 2;
-    const bodySideVisible = bodySideT > 1e-6;
-    leftBodySideFillMesh.visible = bodySideVisible;
-    leftBodySideFillMesh.scale.set(bodySideW, bodySideH, L);
-    leftBodySideFillMesh.position.set(-Hc + bodySideT / 2, bodySideCenterY, 0);
-    rightBodySideFillMesh.visible = bodySideVisible;
-    rightBodySideFillMesh.scale.set(bodySideW, bodySideH, L);
-    rightBodySideFillMesh.position.set(Hc - bodySideT / 2, bodySideCenterY, 0);
+    copperParams.frontY = frontY;
+    copperParams.bodySideT = bodySideT;
+    copperParams.mouthSideT = mouthSideT;
+    copperParams.filmH = Math.max(TOP_FILM_MAX * topFrac, 0);
 
-    // 孔口區側壁（介於本體區上邊界與開口之間，若底部前緣已推進到此區則同樣收斂）
-    const mouthYLow = Math.max(mouthY0, bodyYLow);
-    const mouthYHigh = 0;
-    const mouthSideH = Math.max(mouthYHigh - mouthYLow, EPS);
-    const mouthSideW = Math.max(mouthSideT, EPS);
-    const mouthSideCenterY = (mouthYLow + mouthYHigh) / 2;
-    const mouthSideVisible = mouthSideT > 1e-6;
-    leftMouthSideFillMesh.visible = mouthSideVisible;
-    leftMouthSideFillMesh.scale.set(mouthSideW, mouthSideH, L);
-    leftMouthSideFillMesh.position.set(-Hc + mouthSideT / 2, mouthSideCenterY, 0);
-    rightMouthSideFillMesh.visible = mouthSideVisible;
-    rightMouthSideFillMesh.scale.set(mouthSideW, mouthSideH, L);
-    rightMouthSideFillMesh.position.set(Hc - mouthSideT / 2, mouthSideCenterY, 0);
-
-    // 過鍍層（僅成功情境會抵達此階段）
-    if (!isFailure() && numFrames > fillPhaseFrames) {
+    // 過鍍層（僅成功情境會抵達此階段）：孔口實際封閉的瞬間，直接接續肩部薄銅層已長到的厚度
+    // （TOP_FILM_MAX）繼續往上增厚並橫跨整個開口，銜接處厚度連續、不會有突然冒出的落差。
+    if (!isFailure() && frame > fillPhaseFrames && numFrames > fillPhaseFrames) {
       const tOver = Math.max(0, Math.min(1, (frame - fillPhaseFrames) / (numFrames - fillPhaseFrames)));
-      const overH = MAX_OVERBURDEN * smoothstep(tOver);
-      overburdenMesh.visible = overH > 1e-6;
-      overburdenMesh.scale.set(W + 2 * SW, Math.max(overH, EPS), L);
-      overburdenMesh.position.set(0, overH / 2, 0);
+      const bulkH = (MAX_OVERBURDEN - TOP_FILM_MAX) * smoothstep(tOver);
+      copperParams.overH = TOP_FILM_MAX + bulkH;
     } else {
-      overburdenMesh.scale.set(EPS, EPS, EPS);
-      overburdenMesh.position.set(0, -1000, 0);
+      copperParams.overH = null;
     }
 
     // 空洞揭露（僅失敗情境，孔口封閉後永久困住的未填滿空間）
+    copperParams.revealVoid = revealVoid;
     if (revealVoid) {
-      const voidW = Math.max(2 * (Hc - bodySideT), EPS);
-      const voidH = Math.max(bodyYHigh - bodyYLow, EPS);
-      const voidCenterY = (bodyYLow + bodyYHigh) / 2;
-      voidMesh.scale.set(voidW, voidH, L);
-      voidMesh.position.set(0, voidCenterY, 0);
-    } else {
-      voidMesh.scale.set(EPS, EPS, EPS);
-      voidMesh.position.set(0, -1000, 0);
+      const bodyYLow = -cavityD + frontY;
+      const bodyYHigh = mouthY0;
+      copperParams.voidW = Math.max(2 * (Hc - bodySideT), EPS);
+      copperParams.voidH = Math.max(bodyYHigh - bodyYLow, EPS);
+      copperParams.voidCenterY = (bodyYLow + bodyYHigh) / 2;
     }
   }
 
@@ -340,71 +328,219 @@
     return activeKey === "failure";
   }
 
-  // ---------------------------------------------------------------- 手刻拖曳旋轉 + 滾輪縮放相機控制
-  const orbit = {
-    theta: Math.PI * 0.22,
-    phi: Math.PI * 0.38,
-    radius: Math.max(innerW, innerD, totalH) * 1.9,
-    target: new THREE.Vector3(0, ELECTROLYTE_H * 0.15 - totalBelowH * 0.32, 0),
-    dragging: false,
-    lastX: 0,
-    lastY: 0,
-  };
-  const MIN_PHI = 0.12 * Math.PI, MAX_PHI = 0.88 * Math.PI;
-  const MIN_R = Math.max(innerW, innerD) * 0.9, MAX_R = Math.max(innerW, innerD, totalH) * 4.5;
-
-  function updateCamera() {
-    const { theta, phi, radius, target } = orbit;
-    camera.position.set(
-      target.x + radius * Math.sin(phi) * Math.sin(theta),
-      target.y + radius * Math.cos(phi),
-      target.z + radius * Math.sin(phi) * Math.cos(theta)
-    );
-    camera.lookAt(target);
+  function buildBaseCopperGradient() {
+    const pTop = worldToPx(0, TOP_FILM_MAX);
+    const pBottom = worldToPx(0, -cavityD);
+    const g = ctx.createLinearGradient(0, pTop.y, 0, pBottom.y);
+    g.addColorStop(0, lighten(copperColor, 0.1));
+    g.addColorStop(0.5, toRgb(copperColor));
+    g.addColorStop(1, darken(copperColor, 0.2));
+    return g;
   }
 
-  canvas.addEventListener("mousedown", (e) => {
-    orbit.dragging = true;
-    orbit.lastX = e.clientX;
-    orbit.lastY = e.clientY;
-    canvas.style.cursor = "grabbing";
-  });
-  window.addEventListener("mouseup", () => {
-    orbit.dragging = false;
-    canvas.style.cursor = "grab";
-  });
-  window.addEventListener("mousemove", (e) => {
-    if (!orbit.dragging) return;
-    const dx = e.clientX - orbit.lastX;
-    const dy = e.clientY - orbit.lastY;
-    orbit.lastX = e.clientX;
-    orbit.lastY = e.clientY;
-    orbit.theta -= dx * 0.006;
-    orbit.phi = Math.min(MAX_PHI, Math.max(MIN_PHI, orbit.phi - dy * 0.006));
-  });
-  canvas.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    orbit.radius = Math.min(MAX_R, Math.max(MIN_R, orbit.radius * (1 + e.deltaY * 0.001)));
-  }, { passive: false });
+  function buildOverburdenGradient() {
+    const pTop = worldToPx(0, MAX_OVERBURDEN);
+    const pBottom = worldToPx(0, TOP_FILM_MAX);
+    const g = ctx.createLinearGradient(0, pTop.y, 0, pBottom.y);
+    g.addColorStop(0, lighten(overburdenColor, 0.2));
+    g.addColorStop(0.5, toRgb(overburdenColor));
+    g.addColorStop(1, darken(overburdenColor, 0.1));
+    return g;
+  }
+
+  function buildBaseCopperOutline(p) {
+    const yFloor = -cavityD;
+    
+    if (p.overH != null) {
+      return [[
+        { x: 0, y: yFloor },
+        { x: Hc, y: yFloor },
+        { x: Hc, y: 0 },
+        { x: W / 2 + SW, y: 0 },
+        { x: W / 2 + SW, y: TOP_FILM_MAX },
+        { x: -(W / 2 + SW), y: TOP_FILM_MAX },
+        { x: -(W / 2 + SW), y: 0 },
+        { x: -Hc, y: 0 },
+        { x: -Hc, y: yFloor }
+      ]];
+    }
+
+    const yBodyLow = Math.min(yFloor + p.frontY, 0);
+    const yBodyHigh = Math.max(yBodyLow, mouthY0);
+    const xBody = Hc - p.bodySideT;
+    const xMouth = Hc - p.mouthSideT;
+    const filmH = p.filmH;
+
+    const right = [
+      { x: 0, y: yFloor },
+      { x: Hc, y: yFloor },
+      { x: Hc, y: 0 },
+      { x: W / 2 + SW, y: 0 },
+      { x: W / 2 + SW, y: filmH },
+      { x: xMouth, y: filmH },
+      { x: xMouth, y: yBodyHigh },
+      { x: xBody, y: yBodyHigh },
+      { x: xBody, y: yBodyLow },
+      { x: 0, y: yBodyLow },
+    ];
+    const left = right.slice(1).reverse().map((pt) => ({ x: -pt.x, y: pt.y }));
+    return [right.concat(left)];
+  }
+
+  function buildOverburdenOutline(p) {
+    if (p.overH != null && p.overH > TOP_FILM_MAX) {
+      return [[
+        { x: -(W / 2 + SW), y: TOP_FILM_MAX }, { x: W / 2 + SW, y: TOP_FILM_MAX },
+        { x: W / 2 + SW, y: p.overH }, { x: -(W / 2 + SW), y: p.overH },
+      ]];
+    }
+    return null;
+  }
+
+  function paintCopperMass(outlinePts, sharedFill, strokeColor) {
+    if (!outlinePts || outlinePts.length === 0) return;
+    const polys = Array.isArray(outlinePts[0]) ? outlinePts : [outlinePts];
+    
+    ctx.beginPath();
+    for (const poly of polys) {
+      if (poly.length === 0) continue;
+      const first = worldToPx(poly[0].x, poly[0].y);
+      ctx.moveTo(first.x, first.y);
+      for (let i = 1; i < poly.length; i++) {
+        const p = worldToPx(poly[i].x, poly[i].y);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+    }
+    ctx.fillStyle = sharedFill;
+    ctx.fill();
+    if (strokeColor) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = strokeColor;
+      ctx.stroke();
+    }
+  }
+
+  // ---------------------------------------------------------------- 主要繪圖函式
+  function render() {
+    ctx.clearRect(0, 0, DISPLAY_W, DISPLAY_H);
+
+    drawTank();
+    drawElectrolyte();
+    drawFieldLines();
+    drawIons();
+
+    fillWorldRoundRect(bottomFloorRect.cx, bottomFloorRect.cy, bottomFloorRect.w, bottomFloorRect.h, siColor, {});
+    fillWorldRoundRect(shoulderRects[0].cx, shoulderRects[0].cy, shoulderRects[0].w, shoulderRects[0].h, siColor, { tl: CORNER_R, bl: CORNER_R });
+    fillWorldRoundRect(shoulderRects[1].cx, shoulderRects[1].cy, shoulderRects[1].w, shoulderRects[1].h, siColor, { tr: CORNER_R, br: CORNER_R });
+
+    for (const r of linerRects) {
+      fillWorldRoundRect(r.cx, r.cy, r.w, r.h, barrierColor, {});
+    }
+
+    if (copperParams.frontY > EPS || copperParams.bodySideT > EPS || copperParams.mouthSideT > EPS || copperParams.overH != null) {
+      const baseOutline = buildBaseCopperOutline(copperParams);
+      paintCopperMass(baseOutline, buildBaseCopperGradient(), darken(copperColor, 0.25));
+    }
+    
+    const obOutline = buildOverburdenOutline(copperParams);
+    if (obOutline) {
+      paintCopperMass(obOutline, buildOverburdenGradient(), darken(overburdenColor, 0.25));
+    }
+
+    if (copperParams.revealVoid) {
+      fillWorldRoundRect(0, copperParams.voidCenterY, copperParams.voidW, copperParams.voidH, voidColor, {});
+    }
+  }
+
+  // ---------------------------------------------------------------- 指引線標籤（比照參考圖，標示各層材質）
+  const labelLayer = document.getElementById("viaLabelLayer");
+
+  const LABEL_OFFSETS = {
+    si: { dx: 96, dy: 74 },
+    barrier: { dx: 118, dy: 0 },
+    cu: { dx: -78, dy: 60 },
+    overburden: { dx: -14, dy: -96 },
+  };
+
+  function cuFillAnchor() {
+    const y = -cavityD + Math.max(lastFrontY, Hc * 0.15) * 0.6;
+    return { x: 0, y: Math.min(y, -EPS) };
+  }
+  function cuFillHasVisibleMass() {
+    return lastFrontY > cavityD * 0.03 || lastBodySideT > Hc * 0.03;
+  }
+
+  const LABELS = [
+    { key: "si", text: "基板 Si", anchor: () => rightShoulderPos, visible: () => true },
+    { key: "barrier", text: "阻障層 Ta/TaN", anchor: () => ({ x: rightLinerX, y: -DEPTH * 0.45 }), visible: () => true },
+    { key: "cu", text: "銅 Cu", anchor: cuFillAnchor, visible: cuFillHasVisibleMass },
+    { key: "overburden", text: "過鍍層 Overburden", anchor: () => ({ x: 0, y: copperParams.overH != null ? (TOP_FILM_MAX + copperParams.overH) / 2 : copperParams.filmH / 2 }), visible: () => !isFailure() && copperParams.overH != null && copperParams.overH > TOP_FILM_MAX + EPS },
+  ];
+
+  for (const lb of LABELS) {
+    const el = document.createElement("div");
+    el.className = "via-label";
+    el.innerHTML =
+      '<div class="via-label-dot"></div>' +
+      '<div class="via-label-line"></div>' +
+      `<div class="via-label-badge">${lb.text}</div>`;
+    labelLayer.appendChild(el);
+    lb.dotEl = el.querySelector(".via-label-dot");
+    lb.lineEl = el.querySelector(".via-label-line");
+    lb.badgeEl = el.querySelector(".via-label-badge");
+  }
+
+  function updateLabels() {
+    for (const lb of LABELS) {
+      if (!lb.visible()) {
+        lb.dotEl.style.display = "none";
+        lb.lineEl.style.display = "none";
+        lb.badgeEl.style.display = "none";
+        continue;
+      }
+      lb.dotEl.style.display = "";
+      lb.lineEl.style.display = "";
+      lb.badgeEl.style.display = "";
+
+      const p = lb.anchor();
+      const { x: px, y: py } = worldToPx(p.x, p.y);
+
+      const off = LABEL_OFFSETS[lb.key];
+      const bx = px + off.dx;
+      const by = py + off.dy;
+
+      lb.dotEl.style.transform = `translate(${px}px, ${py}px)`;
+      lb.badgeEl.style.transform = `translate(${bx}px, ${by}px) translate(-50%, -50%)`;
+
+      const dx = bx - px, dy = by - py;
+      const len = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      lb.lineEl.style.width = `${len}px`;
+      lb.lineEl.style.transform = `translate(${px}px, ${py}px) rotate(${ang}rad)`;
+    }
+  }
 
   // ---------------------------------------------------------------- 階段文字
+  const STAGE_BADGE_CHARS = ["①", "②", "③", "④", "⑤"];
   const STAGES_BY_SCENARIO = {
     success: [
-      { max: 0.04, label: "① 初始結構" },
-      { max: 0.35, label: "② 開始電鍍" },
-      { max: 0.75, label: "③ 持續成長" },
-      { max: 0.97, label: "④ 接近填滿" },
-      { max: 1.01, label: "⑤ 完全填滿（過鍍層）" },
+      { max: 0.04, n: 1, label: "初始結構" },
+      { max: 0.35, n: 2, label: "開始電鍍" },
+      { max: 0.75, n: 3, label: "持續成長" },
+      { max: 0.97, n: 4, label: "接近填滿" },
+      { max: 1.01, n: 5, label: "完全填滿（過鍍層）" },
     ],
     failure: [
-      { max: 0.15, label: "① 初始結構" },
-      { max: 0.55, label: "② 孔口快速沉積" },
-      { max: 0.9, label: "③ 孔口即將封閉" },
-      { max: 1.01, label: "④ 孔口封閉・內部形成空洞" },
+      { max: 0.15, n: 1, label: "初始結構" },
+      { max: 0.55, n: 2, label: "孔口快速沉積" },
+      { max: 0.9, n: 3, label: "孔口即將封閉" },
+      { max: 1.01, n: 4, label: "孔口封閉・內部形成空洞" },
     ],
   };
   let STAGES = STAGES_BY_SCENARIO[activeKey];
 
+  const stageBadgeEl = document.getElementById("stageBadge");
   const stageLabelEl = document.getElementById("stageLabel");
   const stagePercentEl = document.getElementById("stagePercent");
 
@@ -412,6 +548,7 @@
     const denom = isFailure() ? (sealFrame || 1) : fillPhaseFrames;
     const frac = Math.min(1, frame / denom);
     const stage = STAGES.find((s) => frac <= s.max) || STAGES[STAGES.length - 1];
+    stageBadgeEl.textContent = STAGE_BADGE_CHARS[stage.n - 1] || String(stage.n);
     stageLabelEl.textContent = stage.label;
     stagePercentEl.textContent = Math.round(frac * 100) + "%";
   }
@@ -442,7 +579,6 @@
     slider.value = String(state.frame);
     updateStageText(state.frame);
     updateViaFill(state.frame);
-    updateSeedLayer(state.frame);
     if (state.recording) {
       downloadBtn.textContent = `錄製中… ${Math.round((state.frame / (numFrames - 1)) * 100)}%`;
     }
@@ -620,8 +756,8 @@
     }
 
     updateIons(tSec);
-    updateCamera();
-    renderer.render(scene, camera);
+    render();
+    updateLabels();
 
     requestAnimationFrame(tick);
   }

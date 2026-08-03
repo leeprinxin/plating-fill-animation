@@ -11,7 +11,7 @@
 
   <header class="page-header">
     <h1>單一孔洞（溝槽）電鍍填滿示意圖</h1>
-    <p class="subtitle">半導體 damascene 製程剖面：銅離子（Cu²⁺）在電場作用下向下遷移，於溝槽底部與側壁的種子層上還原沉積，沉積由底部向上、兩側向內同時推進，理想情況下在開口收斂閉合、不產生空洞，最終表面形成過鍍層（Overburden）。</p>
+    <p class="subtitle">半導體 damascene 製程剖面：銅離子（Cu²⁺）在電場作用下向下遷移，於溝槽底部與側壁的阻障層上還原沉積，沉積由底部向上、兩側向內同時推進，理想情況下在開口收斂閉合、不產生空洞，最終表面形成過鍍層（Overburden）。</p>
   </header>
 
   <div class="stage">
@@ -22,13 +22,18 @@
         <button id="scenarioFailureBtn" class="ctrl-btn ghost" aria-label="橋接失敗情境">⚠️ 橋接失敗（孔口封閉）</button>
         <a class="ctrl-btn ghost" href="index.html">← 多孔結構填滿動畫</a>
       </div>
-      <canvas id="simCanvas"></canvas>
+      <div class="canvas-wrap">
+        <canvas id="simCanvas"></canvas>
+        <div id="viaLabelLayer" class="via-label-layer"></div>
+      </div>
 
       <div class="stage-banner">
-        <span id="stageLabel" class="stage-label">初始結構</span>
+        <span class="stage-title">
+          <span id="stageBadge" class="stage-badge">①</span>
+          <span id="stageLabel" class="stage-label">初始結構</span>
+        </span>
         <span id="stagePercent" class="stage-percent">0%</span>
       </div>
-      <p class="drag-hint">🖱 拖曳旋轉視角・滾輪縮放</p>
     </div>
 
     <aside class="legend">
@@ -37,9 +42,7 @@
         <li><span class="swatch arrow-swatch">↓</span>Cu²⁺ 離子 / 電流方向</li>
         <li><span class="swatch" style="background:linear-gradient(#dff1fb,#bfe2f7)"></span>電解液</li>
         <li><span class="swatch" style="background:linear-gradient(135deg,#e69b5c,#a85a29)"></span>銅（Cu）／過鍍層（Overburden）</li>
-        <li><span class="swatch" style="background:linear-gradient(135deg,#e8c876,#b98f38)"></span>種子層（Cu Seed）</li>
         <li><span class="swatch" style="background:linear-gradient(135deg,#7f96b3,#4c5f78)"></span>阻障層（Ta/TaN）</li>
-        <li><span class="swatch" style="background:linear-gradient(135deg,#e8ebee,#c3c9d0)"></span>介電層（SiO₂）</li>
         <li><span class="swatch" style="background:linear-gradient(135deg,#7d848c,#565c63)"></span>基板（Si）</li>
         <li><span class="swatch" style="background:linear-gradient(135deg,#c97575,#8a3f3f)"></span>空洞（孔口提前封閉，永久困住）</li>
       </ul>
@@ -48,7 +51,7 @@
         <h3>填滿方式說明</h3>
         <ul class="factors">
           <li>底部往上（bottom-up）：電鍍液中的加速劑使底部沉積速率遠高於側壁，避免開口提前封閉困住空洞。</li>
-          <li>側壁同步增厚：種子層上的側壁沉積也持續向中線收攏，與底部前緣同時會合。</li>
+          <li>側壁同步增厚：阻障層上的側壁沉積也持續向中線收攏，與底部前緣同時會合。</li>
           <li>完全填滿後仍持續電鍍，於表面形成過鍍層，供後續平坦化（CMP）製程使用。</li>
           <li>若加速劑不足或深寬比過高，孔口附近側壁會搶先向中線收攏封閉，底部與中段尚未填滿即被困住，形成「橋接（bridging）」空洞。</li>
         </ul>
@@ -82,7 +85,6 @@
 </div>
 
 <script src="via-data.js"></script>
-<script src="vendor/three.min.js"></script>
 <script src="single-via.js"></script>
 </body>
 </html>
