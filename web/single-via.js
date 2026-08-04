@@ -8,7 +8,7 @@
   const EPS = 0.0001;
 
   const cavityW = W - 2 * linerThickness;
-  const cavityD = DEPTH - linerThickness;
+  const cavityD = DEPTH;
   const Hc = cavityW / 2;
   const MOUTH_FRAC = 0.22; // 孔口區（開口附近）佔溝槽深度的比例，此區側壁增厚速度與本體區可能不同
 
@@ -45,7 +45,7 @@
   const siColor = 0x6b7178;
   const barrierColor = 0x5c7290;
   const copperColor = 0xc8763c;
-  const overburdenColor = 0xdfa060;
+  const overburdenColor = 0xc8763c;
   const ionColor = 0xe0925a;
   const fieldLineColor = 0x4f8fd8;
   const voidColor = 0xb85a5a;
@@ -240,7 +240,7 @@
     { cx: W / 2 + SW / 2, cy: -totalBelowH / 2, w: SW, h: totalBelowH },
   ];
   const rightShoulderPos = { x: W / 2 + SW / 2, y: -totalBelowH / 2 };
-  const bottomFloorRect = { cx: 0, cy: -(DEPTH + substrateBelow / 2), w: W, h: substrateBelow };
+  const bottomFloorRect = { cx: 0, cy: -(DEPTH + substrateBelow / 2) + linerThickness / 2, w: W, h: substrateBelow + linerThickness };
 
   // ---------------------------------------------------------------- Liner：阻障層(Ta/TaN)，直接鋪滿整個 liner 厚度
   const linerRects = [
@@ -329,7 +329,8 @@
   }
 
   function buildBaseCopperGradient() {
-    const pTop = worldToPx(0, TOP_FILM_MAX);
+    const topY = (copperParams.overH != null && copperParams.overH > TOP_FILM_MAX) ? copperParams.overH : TOP_FILM_MAX;
+    const pTop = worldToPx(0, topY);
     const pBottom = worldToPx(0, -cavityD);
     const g = ctx.createLinearGradient(0, pTop.y, 0, pBottom.y);
     g.addColorStop(0, lighten(copperColor, 0.1));
@@ -338,27 +339,18 @@
     return g;
   }
 
-  function buildOverburdenGradient() {
-    const pTop = worldToPx(0, MAX_OVERBURDEN);
-    const pBottom = worldToPx(0, TOP_FILM_MAX);
-    const g = ctx.createLinearGradient(0, pTop.y, 0, pBottom.y);
-    g.addColorStop(0, lighten(overburdenColor, 0.2));
-    g.addColorStop(0.5, toRgb(overburdenColor));
-    g.addColorStop(1, darken(overburdenColor, 0.1));
-    return g;
-  }
-
   function buildBaseCopperOutline(p) {
     const yFloor = -cavityD;
     
     if (p.overH != null) {
+      const currentTopY = Math.max(TOP_FILM_MAX, p.overH);
       return [[
         { x: 0, y: yFloor },
         { x: Hc, y: yFloor },
         { x: Hc, y: 0 },
         { x: W / 2 + SW, y: 0 },
-        { x: W / 2 + SW, y: TOP_FILM_MAX },
-        { x: -(W / 2 + SW), y: TOP_FILM_MAX },
+        { x: W / 2 + SW, y: currentTopY },
+        { x: -(W / 2 + SW), y: currentTopY },
         { x: -(W / 2 + SW), y: 0 },
         { x: -Hc, y: 0 },
         { x: -Hc, y: yFloor }
@@ -387,15 +379,6 @@
     return [right.concat(left)];
   }
 
-  function buildOverburdenOutline(p) {
-    if (p.overH != null && p.overH > TOP_FILM_MAX) {
-      return [[
-        { x: -(W / 2 + SW), y: TOP_FILM_MAX }, { x: W / 2 + SW, y: TOP_FILM_MAX },
-        { x: W / 2 + SW, y: p.overH }, { x: -(W / 2 + SW), y: p.overH },
-      ]];
-    }
-    return null;
-  }
 
   function paintCopperMass(outlinePts, sharedFill, strokeColor) {
     if (!outlinePts || outlinePts.length === 0) return;
@@ -422,6 +405,108 @@
   }
 
   // ---------------------------------------------------------------- 主要繪圖函式
+  function paintSubstrate() {
+    const yTop = 0;
+    const yBot = -(DEPTH + substrateBelow);
+    const xLOut = -(W / 2 + SW);
+    const xROut = W / 2 + SW;
+    const xLIn = -W / 2;
+    const xRIn = W / 2;
+    const yTrenchBot = -DEPTH;
+    const r = CORNER_R * scale;
+
+    const ptTL = worldToPx(xLOut, yTop);
+    const ptTR = worldToPx(xROut, yTop);
+    const ptBR = worldToPx(xROut, yBot);
+    const ptBL = worldToPx(xLOut, yBot);
+    
+    const ptTLin = worldToPx(xLIn, yTop);
+    const ptTRin = worldToPx(xRIn, yTop);
+    const ptBLin = worldToPx(xLIn, yTrenchBot);
+    const ptBRin = worldToPx(xRIn, yTrenchBot);
+
+    ctx.beginPath();
+    ctx.moveTo(ptTL.x + r, ptTL.y);
+    ctx.lineTo(ptTLin.x, ptTLin.y);
+    ctx.lineTo(ptBLin.x, ptBLin.y);
+    ctx.lineTo(ptBRin.x, ptBRin.y);
+    ctx.lineTo(ptTRin.x, ptTRin.y);
+    ctx.lineTo(ptTR.x - r, ptTR.y);
+    ctx.arcTo(ptTR.x, ptTR.y, ptTR.x, ptTR.y + r, r);
+    ctx.lineTo(ptBR.x, ptBR.y - r);
+    ctx.arcTo(ptBR.x, ptBR.y, ptBR.x - r, ptBR.y, r);
+    ctx.lineTo(ptBL.x + r, ptBL.y);
+    ctx.arcTo(ptBL.x, ptBL.y, ptBL.x, ptBL.y - r, r);
+    ctx.lineTo(ptTL.x, ptTL.y + r);
+    ctx.arcTo(ptTL.x, ptTL.y, ptTL.x + r, ptTL.y, r);
+    ctx.closePath();
+
+    const g = ctx.createLinearGradient(0, ptTL.y, 0, ptBL.y);
+    g.addColorStop(0, lighten(siColor, 0.2));
+    g.addColorStop(0.5, toRgb(siColor));
+    g.addColorStop(1, darken(siColor, 0.2));
+
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = darken(siColor, 0.25);
+    
+    // Draw stroke for all borders EXCEPT the bottom of the trench (ptBLin to ptBRin)
+    ctx.beginPath();
+    ctx.moveTo(ptBRin.x, ptBRin.y);
+    ctx.lineTo(ptTRin.x, ptTRin.y);
+    ctx.lineTo(ptTR.x - r, ptTR.y);
+    ctx.arcTo(ptTR.x, ptTR.y, ptTR.x, ptTR.y + r, r);
+    ctx.lineTo(ptBR.x, ptBR.y - r);
+    ctx.arcTo(ptBR.x, ptBR.y, ptBR.x - r, ptBR.y, r);
+    ctx.lineTo(ptBL.x + r, ptBL.y);
+    ctx.arcTo(ptBL.x, ptBL.y, ptBL.x, ptBL.y - r, r);
+    ctx.lineTo(ptTL.x, ptTL.y + r);
+    ctx.arcTo(ptTL.x, ptTL.y, ptTL.x + r, ptTL.y, r);
+    ctx.lineTo(ptTLin.x, ptTLin.y);
+    ctx.lineTo(ptBLin.x, ptBLin.y);
+    ctx.stroke();
+  }
+
+  function paintBarrierLayer() {
+    const yTop = 0;
+    const yBotOut = -DEPTH;
+    const xLOut = -W / 2;
+    const xLIn = -W / 2 + linerThickness;
+    const xRIn = W / 2 - linerThickness;
+    const xROut = W / 2;
+    
+    const g = ctx.createLinearGradient(0, worldToPx(0, yTop).y, 0, worldToPx(0, yBotOut).y);
+    g.addColorStop(0, lighten(barrierColor, 0.2));
+    g.addColorStop(0.5, toRgb(barrierColor));
+    g.addColorStop(1, darken(barrierColor, 0.2));
+
+    ctx.fillStyle = g;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = darken(barrierColor, 0.25);
+
+    // Left barrier
+    ctx.beginPath();
+    let p = worldToPx(xLOut, yTop); ctx.moveTo(p.x, p.y);
+    p = worldToPx(xLIn, yTop); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLIn, yBotOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLOut, yBotOut); ctx.lineTo(p.x, p.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Right barrier
+    ctx.beginPath();
+    p = worldToPx(xRIn, yTop); ctx.moveTo(p.x, p.y);
+    p = worldToPx(xROut, yTop); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xROut, yBotOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xRIn, yBotOut); ctx.lineTo(p.x, p.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
   function render() {
     ctx.clearRect(0, 0, DISPLAY_W, DISPLAY_H);
 
@@ -430,22 +515,12 @@
     drawFieldLines();
     drawIons();
 
-    fillWorldRoundRect(bottomFloorRect.cx, bottomFloorRect.cy, bottomFloorRect.w, bottomFloorRect.h, siColor, {});
-    fillWorldRoundRect(shoulderRects[0].cx, shoulderRects[0].cy, shoulderRects[0].w, shoulderRects[0].h, siColor, { tl: CORNER_R, bl: CORNER_R });
-    fillWorldRoundRect(shoulderRects[1].cx, shoulderRects[1].cy, shoulderRects[1].w, shoulderRects[1].h, siColor, { tr: CORNER_R, br: CORNER_R });
-
-    for (const r of linerRects) {
-      fillWorldRoundRect(r.cx, r.cy, r.w, r.h, barrierColor, {});
-    }
+    paintSubstrate();
+    paintBarrierLayer();
 
     if (copperParams.frontY > EPS || copperParams.bodySideT > EPS || copperParams.mouthSideT > EPS || copperParams.overH != null) {
       const baseOutline = buildBaseCopperOutline(copperParams);
       paintCopperMass(baseOutline, buildBaseCopperGradient(), darken(copperColor, 0.25));
-    }
-    
-    const obOutline = buildOverburdenOutline(copperParams);
-    if (obOutline) {
-      paintCopperMass(obOutline, buildOverburdenGradient(), darken(overburdenColor, 0.25));
     }
 
     if (copperParams.revealVoid) {
@@ -472,7 +547,7 @@
   }
 
   const LABELS = [
-    { key: "si", text: "基板 Si", anchor: () => rightShoulderPos, visible: () => true },
+    { key: "si", text: "SiO2", anchor: () => rightShoulderPos, visible: () => true },
     { key: "barrier", text: "阻障層 Ta/TaN", anchor: () => ({ x: rightLinerX, y: -DEPTH * 0.45 }), visible: () => true },
     { key: "cu", text: "銅 Cu", anchor: cuFillAnchor, visible: cuFillHasVisibleMass },
     { key: "overburden", text: "過鍍層 Overburden", anchor: () => ({ x: 0, y: copperParams.overH != null ? (TOP_FILM_MAX + copperParams.overH) / 2 : copperParams.filmH / 2 }), visible: () => !isFailure() && copperParams.overH != null && copperParams.overH > TOP_FILM_MAX + EPS },
@@ -491,9 +566,12 @@
     lb.badgeEl = el.querySelector(".via-label-badge");
   }
 
+  const toggleLabelsBtn = document.getElementById("toggleLabelsBtn");
+
   function updateLabels() {
+    const showLabels = toggleLabelsBtn ? toggleLabelsBtn.checked : false;
     for (const lb of LABELS) {
-      if (!lb.visible()) {
+      if (!showLabels || !lb.visible()) {
         lb.dotEl.style.display = "none";
         lb.lineEl.style.display = "none";
         lb.badgeEl.style.display = "none";
@@ -626,6 +704,12 @@
   speedSelect.addEventListener("change", () => {
     state.speed = parseFloat(speedSelect.value);
   });
+
+  if (toggleLabelsBtn) {
+    toggleLabelsBtn.addEventListener("change", () => {
+      updateLabels();
+    });
+  }
 
   // ---------------------------------------------------------------- 下載動畫影片（canvas.captureStream + MediaRecorder）
   const downloadBtn = document.getElementById("downloadBtn");
