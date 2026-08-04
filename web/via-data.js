@@ -1,7 +1,7 @@
 window.VIA_DATA = {
   trenchWidth: 3.2,      // 溝槽開口內部寬度（含 liner 前的原始腔體寬度）
   trenchDepth: 9.0,      // 溝槽深度（含 liner 前的原始腔體深度）
-  linerThickness: 0.32,  // 阻障層(Ta/TaN) liner 厚度
+  linerThickness: 0.16,  // 阻障層(Ta/TaN) liner 厚度
   shoulderWidth: 2.6,    // 溝槽兩側「肩部」基板寬度
   substrateBelow: 2.0,   // 溝槽底部以下的基板厚度
 

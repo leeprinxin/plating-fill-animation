@@ -7,10 +7,14 @@
 
   const EPS = 0.0001;
 
+  const yShoulder = linerThickness;
+  const yFloor = -DEPTH + linerThickness;
   const cavityW = W - 2 * linerThickness;
-  const cavityD = DEPTH;
+  const cavityD = yShoulder - yFloor;
   const Hc = cavityW / 2;
   const MOUTH_FRAC = 0.22; // 孔口區（開口附近）佔溝槽深度的比例，此區側壁增厚速度與本體區可能不同
+  const mouthH = cavityD * MOUTH_FRAC;
+  const mouthY0 = yShoulder - mouthH;
 
   function smoothstep(x) {
     x = Math.min(1, Math.max(0, x));
@@ -158,7 +162,7 @@
 
   // 目前銅填充前緣的 y 座標（離子若要繼續往下流，最深只能流到這裡，象徵撞上已沉積的銅面）
   function currentFillFrontY() {
-    return -cavityD + lastFrontY;
+    return yFloor + lastFrontY;
   }
 
   // 目前孔口仍然開放（尚未被側壁銅層填滿）的半寬，隨側壁增厚而收窄，收窄到 0 代表已封閉
@@ -258,8 +262,6 @@
   // 之後（本體區與底部因電解液已無法進入而停止生長）永久困住一段未填滿的空洞。
   const MAX_OVERBURDEN = 1.1;
   const TOP_FILM_MAX = 0.26; // 肩部頂面薄銅層在「填孔階段」內能長到的最大厚度，之後由過鍍層接手繼續增厚
-  const mouthH = cavityD * MOUTH_FRAC;
-  const mouthY0 = -mouthH; // 孔口區下邊界（= 本體區上邊界）
 
   let lastFrontY = 0, lastBodySideT = 0, lastMouthSideT = 0; // 供「銅 Cu」指引線標籤錨點與離子流動判斷使用
 
@@ -316,7 +318,7 @@
     // 空洞揭露（僅失敗情境，孔口封閉後永久困住的未填滿空間）
     copperParams.revealVoid = revealVoid;
     if (revealVoid) {
-      const bodyYLow = -cavityD + frontY;
+      const bodyYLow = yFloor + frontY;
       const bodyYHigh = mouthY0;
       copperParams.voidW = Math.max(2 * (Hc - bodySideT), EPS);
       copperParams.voidH = Math.max(bodyYHigh - bodyYLow, EPS);
@@ -329,9 +331,9 @@
   }
 
   function buildBaseCopperGradient() {
-    const topY = (copperParams.overH != null && copperParams.overH > TOP_FILM_MAX) ? copperParams.overH : TOP_FILM_MAX;
+    const topY = (copperParams.overH != null && copperParams.overH > TOP_FILM_MAX) ? (yShoulder + copperParams.overH) : (yShoulder + TOP_FILM_MAX);
     const pTop = worldToPx(0, topY);
-    const pBottom = worldToPx(0, -cavityD);
+    const pBottom = worldToPx(0, yFloor);
     const g = ctx.createLinearGradient(0, pTop.y, 0, pBottom.y);
     g.addColorStop(0, lighten(copperColor, 0.1));
     g.addColorStop(0.5, toRgb(copperColor));
@@ -340,36 +342,34 @@
   }
 
   function buildBaseCopperOutline(p) {
-    const yFloor = -cavityD;
-    
     if (p.overH != null) {
-      const currentTopY = Math.max(TOP_FILM_MAX, p.overH);
+      const currentTopY = yShoulder + Math.max(TOP_FILM_MAX, p.overH);
       return [[
         { x: 0, y: yFloor },
         { x: Hc, y: yFloor },
-        { x: Hc, y: 0 },
-        { x: W / 2 + SW, y: 0 },
+        { x: Hc, y: yShoulder },
+        { x: W / 2 + SW, y: yShoulder },
         { x: W / 2 + SW, y: currentTopY },
         { x: -(W / 2 + SW), y: currentTopY },
-        { x: -(W / 2 + SW), y: 0 },
-        { x: -Hc, y: 0 },
+        { x: -(W / 2 + SW), y: yShoulder },
+        { x: -Hc, y: yShoulder },
         { x: -Hc, y: yFloor }
       ]];
     }
 
-    const yBodyLow = Math.min(yFloor + p.frontY, 0);
+    const yBodyLow = Math.min(yFloor + p.frontY, yShoulder);
     const yBodyHigh = Math.max(yBodyLow, mouthY0);
     const xBody = Hc - p.bodySideT;
     const xMouth = Hc - p.mouthSideT;
-    const filmH = p.filmH;
+    const currentTopY = yShoulder + p.filmH;
 
     const right = [
       { x: 0, y: yFloor },
       { x: Hc, y: yFloor },
-      { x: Hc, y: 0 },
-      { x: W / 2 + SW, y: 0 },
-      { x: W / 2 + SW, y: filmH },
-      { x: xMouth, y: filmH },
+      { x: Hc, y: yShoulder },
+      { x: W / 2 + SW, y: yShoulder },
+      { x: W / 2 + SW, y: currentTopY },
+      { x: xMouth, y: currentTopY },
       { x: xMouth, y: yBodyHigh },
       { x: xBody, y: yBodyHigh },
       { x: xBody, y: yBodyLow },
@@ -470,14 +470,18 @@
   }
 
   function paintBarrierLayer() {
-    const yTop = 0;
+    const yTopOut = yShoulder;
+    const yTopIn = 0;
+    const yBotIn = yFloor;
     const yBotOut = -DEPTH;
+    const xLShoulder = -(W / 2 + SW);
     const xLOut = -W / 2;
     const xLIn = -W / 2 + linerThickness;
     const xRIn = W / 2 - linerThickness;
     const xROut = W / 2;
+    const xRShoulder = W / 2 + SW;
     
-    const g = ctx.createLinearGradient(0, worldToPx(0, yTop).y, 0, worldToPx(0, yBotOut).y);
+    const g = ctx.createLinearGradient(0, worldToPx(0, yTopOut).y, 0, worldToPx(0, yBotOut).y);
     g.addColorStop(0, lighten(barrierColor, 0.2));
     g.addColorStop(0.5, toRgb(barrierColor));
     g.addColorStop(1, darken(barrierColor, 0.2));
@@ -486,22 +490,19 @@
     ctx.lineWidth = 1;
     ctx.strokeStyle = darken(barrierColor, 0.25);
 
-    // Left barrier
     ctx.beginPath();
-    let p = worldToPx(xLOut, yTop); ctx.moveTo(p.x, p.y);
-    p = worldToPx(xLIn, yTop); ctx.lineTo(p.x, p.y);
-    p = worldToPx(xLIn, yBotOut); ctx.lineTo(p.x, p.y);
-    p = worldToPx(xLOut, yBotOut); ctx.lineTo(p.x, p.y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Right barrier
-    ctx.beginPath();
-    p = worldToPx(xRIn, yTop); ctx.moveTo(p.x, p.y);
-    p = worldToPx(xROut, yTop); ctx.lineTo(p.x, p.y);
+    let p = worldToPx(xLShoulder, yTopOut); ctx.moveTo(p.x, p.y);
+    p = worldToPx(xLIn, yTopOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLIn, yBotIn); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xRIn, yBotIn); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xRIn, yTopOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xRShoulder, yTopOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xRShoulder, yTopIn); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xROut, yTopIn); ctx.lineTo(p.x, p.y);
     p = worldToPx(xROut, yBotOut); ctx.lineTo(p.x, p.y);
-    p = worldToPx(xRIn, yBotOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLOut, yBotOut); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLOut, yTopIn); ctx.lineTo(p.x, p.y);
+    p = worldToPx(xLShoulder, yTopIn); ctx.lineTo(p.x, p.y);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -539,8 +540,8 @@
   };
 
   function cuFillAnchor() {
-    const y = -cavityD + Math.max(lastFrontY, Hc * 0.15) * 0.6;
-    return { x: 0, y: Math.min(y, -EPS) };
+    const y = yFloor + Math.max(lastFrontY, Hc * 0.15) * 0.6;
+    return { x: 0, y: Math.min(y, yShoulder - EPS) };
   }
   function cuFillHasVisibleMass() {
     return lastFrontY > cavityD * 0.03 || lastBodySideT > Hc * 0.03;
@@ -550,7 +551,7 @@
     { key: "si", text: "SiO2", anchor: () => rightShoulderPos, visible: () => true },
     { key: "barrier", text: "阻障層 Ta/TaN", anchor: () => ({ x: rightLinerX, y: -DEPTH * 0.45 }), visible: () => true },
     { key: "cu", text: "銅 Cu", anchor: cuFillAnchor, visible: cuFillHasVisibleMass },
-    { key: "overburden", text: "過鍍層 Overburden", anchor: () => ({ x: 0, y: copperParams.overH != null ? (TOP_FILM_MAX + copperParams.overH) / 2 : copperParams.filmH / 2 }), visible: () => !isFailure() && copperParams.overH != null && copperParams.overH > TOP_FILM_MAX + EPS },
+    { key: "overburden", text: "過鍍層 Overburden", anchor: () => ({ x: 0, y: copperParams.overH != null ? yShoulder + (TOP_FILM_MAX + copperParams.overH) / 2 : yShoulder + copperParams.filmH / 2 }), visible: () => !isFailure() && copperParams.overH != null && copperParams.overH > TOP_FILM_MAX + EPS },
   ];
 
   for (const lb of LABELS) {
